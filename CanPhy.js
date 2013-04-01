@@ -5,14 +5,15 @@ var canvas = document.getElementById('testCanvas'),
 
 var timeStep = 0.0166,// ~ 60 fps
     powTimeStep = timeStep*timeStep,
-    canvasWidth = 2000,
-    canvasHeight = 1000,
-    mouseImpactDistance = 15;
+    canvasWidth = 1800,
+    canvasHeight = 900,
+    mouseImpactDistance = 15,
+    physicsAccuracy = 3;
 
-var clothWidth = 120,
+var clothWidth = 100,
     clothHeight = 40,
     spacing = 15,
-    initX = 50,
+    initX = 150,
     initY = 50;
 
 canvas.width = canvasWidth;
@@ -62,11 +63,17 @@ function Particle(x,y){
     this.prevX = x;
     this.prevY = y;
     this.ax = 0;
-    this.ay = 800;
+    this.ay = 400;
     this.free = true;
     this.constraints = [];
 }
-
+Particle.prototype = {
+    constructor: Particle,
+    satisfyBounds: function(){
+        this.x = Math.min(Math.max(this.x,0),canvasWidth);
+        this.y = Math.min(Math.max(this.y,0),canvasHeight);
+    }
+};
 
 function Constraint(particle1, particle2, restLength){
     this.particle1 = particle1;
@@ -91,8 +98,8 @@ function ParticleSystem(particles,constraints){
 ParticleSystem.prototype = {
     verletIntegration: function(){
         var numParticles = this.particles.length;
-        for (var i=0; i<numParticles; i++) {
-            var particle = this.particles[i];
+        while (numParticles--) {
+            var particle = this.particles[numParticles];
             if (particle.free) {
                 var tempX = particle.x,
                     tempY = particle.y;
@@ -101,8 +108,8 @@ ParticleSystem.prototype = {
                         deltaY = particle.y - mouse.y,
                         deltaLength = Math.sqrt(deltaX*deltaX + deltaY*deltaY);
                     if (deltaLength < mouseImpactDistance) {
-                        particle.x += (mouse.x - mouse.prevX)*1.4;
-                        particle.y += (mouse.y - mouse.prevY)*1.4;
+                        particle.x += mouse.x - mouse.prevX;
+                        particle.y += mouse.y - mouse.prevY;
                     }
                 }
                 particle.x += (particle.x - particle.prevX)*0.99+ particle.ax*powTimeStep;
@@ -111,21 +118,14 @@ ParticleSystem.prototype = {
                 particle.prevY = tempY;
 
                 //bounds
-                particle.x = Math.min(Math.max(particle.x,0),canvasWidth);
-                particle.y = Math.min(Math.max(particle.y,0),canvasHeight);
+                particle.satisfyBounds();
             }
         }
     },
     satisfyConstraints: function(){
-        /*var length = this.particles.length;
-        for (var i=0; i<length; i++) {
-            var particle = this.particles[i];
-            particle.x = Math.min(Math.max(particle.x,0),canvasWidth);
-            particle.y = Math.min(Math.max(particle.y,0),canvasHeight);
-        }*/
         var length = this.constraints.length;
-        for (var i=0; i<length; i++) {
-            var constraint = this.constraints[i],
+        while (length--) {
+            var constraint = this.constraints[length],
                 particle1 = constraint.particle1,
                 particle2 = constraint.particle2;
 
@@ -149,61 +149,41 @@ ParticleSystem.prototype = {
         }
     },
     accumulateForces: function(){},
+    draw: function(){
+        var length = this.constraints.length;
+        ctx.beginPath();
+        while (length--) {
+            var constraint = this.constraints[length];
+            constraint.draw();
+        }
+        ctx.stroke();
+    },
     update:function(){
         //this.accumulateForces();
         this.verletIntegration();
         this.satisfyConstraints();
-    },
-    draw: function(){
-        var length = this.constraints.length;
-        ctx.beginPath();
-        for (var i = 0; i<length; i++) {
-            var constraint = this.constraints[i];
-            ctx.moveTo(constraint.particle1.x,constraint.particle1.y);
-            ctx.lineTo(constraint.particle2.x,constraint.particle2.y);
-        }
-        ctx.stroke();
     }
 };
-/*
- var testParticle1 = new Particle(300,300);
- var testParticle2 = new Particle(330,330);
- var testParticle3 = new Particle(300,360);
- var testParticle4 = new Particle(270,330);
- var testConstraint1 = new Constraint(testParticle1,testParticle2,42);
- var testConstraint2 = new Constraint(testParticle2,testParticle3,42);
- var testConstraint3 = new Constraint(testParticle3,testParticle4,42);
- var testConstraint4 = new Constraint(testParticle4,testParticle1,42);
- //var testConstraint5 = new Constraint(testParticle1,testParticle3,70);
-
- var testBody = new ParticleSystem([testParticle1,testParticle2,testParticle3,testParticle4],
- [testConstraint1,testConstraint2,testConstraint3, testConstraint4]);*/
-
 
 
 var particles = [],
-    constraints = [];
+    constraints = [],
+    particlesArray = [];
 for (var y = 0; y < clothHeight; y++) {
     particles[y] = [];
     for (var x = 0; x < clothWidth; x++) {
         particles[y][x] = new Particle(initX + x*spacing, initY + y*spacing);
-        if (y==0) particles[y][x].free = false;
+        if (y==0 && x%7==0) particles[y][x].free = false;
+        particlesArray.push(particles[y][x]);
     }
 }
 for (y = 0; y < clothHeight; y++) {
     for (x = 0; x < clothWidth; x++) {
         (x != clothWidth - 1) && constraints.push(new Constraint(particles[y][x],particles[y][x+1], spacing));
         (y != 0) && constraints.push(new Constraint(particles[y][x],particles[y-1][x], spacing));
-        //(x != 0) && constraints.push(new Constraint(particles[y][x],particles[y][x-1], spacing));
-        //(y != clothHeight - 1) && constraints.push(new Constraint(particles[y][x],particles[y+1][x], spacing));
     }
 }
-var particlesArray = [];
-for (y = 0; y < clothHeight; y++) {
-    for (x = 0; x < clothWidth; x++) {
-        particlesArray.push(particles[y][x]);
-    }
-}
+
 
 var testCloth = new ParticleSystem(particlesArray,constraints);
 
@@ -211,7 +191,10 @@ update();
 
 function update(){
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-    testCloth.update();
+    var steps = physicsAccuracy;
+    while (steps--) {
+        testCloth.update();
+    }
     testCloth.draw();
     requestAnimFrame(update);
 }
